@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Monitoring</title>
+  <style>
+    body { text-align: center; background: #111; color: white; }
+    video, canvas { width: 90%; max-width: 500px; border-radius: 10px; }
+    #status { font-size: 24px; margin-top: 10px; }
+    img { width: 200px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+<h2>Monitoring</h2>
+
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+
+<div id="status">focus...</div>
+<img id="statusImg" src="focus.png">
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const statusText = document.getElementById("status");
+const statusImg = document.getElementById("statusImg");
+
+let startTime = null;
+
+// 설정값
+const DIST_THRESHOLD = 0.15;  // 손 사이 거리 (비율)
+const LOWER_Y = 0.6;          // 아래 영역
+const TIME_THRESHOLD = 3000;  // 3초
+
+function distance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+const hands = new Hands({
+  locateFile: (file) => {
+    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+  }
+});
+
+hands.setOptions({
+  maxNumHands: 2,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.7
+});
+
+hands.onResults(results => {
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  let status = "focus";
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {
+    const hand1 = results.multiHandLandmarks[0][0]; // 손목
+    const hand2 = results.multiHandLandmarks[1][0];
+
+    const dist = distance(hand1, hand2);
+
+    if (hand1.y > LOWER_Y && hand2.y > LOWER_Y) {
+      if (dist < DIST_THRESHOLD) {
+        if (!startTime) startTime = Date.now();
+        if (Date.now() - startTime > TIME_THRESHOLD) {
+          status = "distract";
+        }
+      } else {
+        startTime = null;
+      }
+    } else {
+      startTime = null;
+    }
+  } else {
+    startTime = null;
+  }
+
+  // 상태 표시
+  if (status === "distract") {
+    statusText.innerText = "!";
+    statusImg.src = "warning.png";
+  } else {
+    statusText.innerText = "focus...";
+    statusImg.src = "focus.gif";
+  }
+});
+
+// 카메라 실행
+const camera = new Camera(video, {
+  onFrame: async () => {
+    await hands.send({image: video});
+  },
+  width: 640,
+  height: 480
+});
+camera.start();
+</script>
+
+</body>
+</html>
